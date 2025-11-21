@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ Root Finding </title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/2.1.0/chartjs-plugin-annotation.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>C++ Function Root Finding<span class="badge">WebAssembly</span></h1>
+        <p class="subtitle">Exceptions and graph plotting to be fixed</p>
+        
+        <div id="status" class="loading">Loading WebAssembly module</div>
+        
+        <div class="warning" id="warning">
+            <strong> Setup Required:</strong> You need to compile the C++ code first!
+            <ol style="margin: 10px 0 0 20px; line-height: 1.6;">
+                <li>Save the C++ code as <code>root_finder.cpp</code></li>
+                <li>Install Emscripten: <a href="https://emscripten.org/docs/getting_started/downloads.html" target="_blank">emscripten.org</a></li>
+                <li>Run: <code style="display: block; margin: 5px 0; padding: 5px; background: white;">emcc root_finder.cpp -o root_finder.js -s EXPORTED_FUNCTIONS='["_bisection","_newtonSimple","_secant","_regulaFalsiUnmodified","_regulaFalsiIllinois","_regulaFalsiSlavic","_regulaFalsiIllinoisSlavic","_riddersSolve","_newtonRaphsonSolve","_bracketRoot","_setFunction"]' -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' -s ALLOW_MEMORY_GROWTH=1</code></li>
+                <li>Place <code>root_finder.js</code> and <code>root_finder.wasm</code> in the same folder as this HTML</li>
+                <li>Serve with: <code>python -m http.server 8000</code></li>
+            </ol>
+        </div>
+        
+        <div class="controls" id="controls" style="display: none;">
+            <div class="control-group" style="grid-column: 1 / -1;">
+                <label for="method">Root-Finding Algorithm</label>
+                <select id="method">
+                    <optgroup label="Simple Methods">
+                        <option value="bisection">Bisection Method</option>
+                        <option value="newtonSimple">Newton's Method (Simple)</option>
+                        <option value="secant">Secant Method</option>
+                    </optgroup>
+                    <optgroup label="Advanced Methods">
+                        <option value="newtonRaphsonSolve">Newton-Raphson (with Damping)</option>
+                        <option value="riddersSolve">Ridders' Method</option>
+                    </optgroup>
+                    <optgroup label="Regula Falsi Variants">
+                        <option value="regulaFalsiUnmodified">Regula Falsi (Unmodified)</option>
+                        <option value="regulaFalsiIllinois">Regula Falsi (Illinois)</option>
+                        <option value="regulaFalsiSlavic">Regula Falsi (Slavic)</option>
+                        <option value="regulaFalsiIllinoisSlavic">Regula Falsi (Illinois-Slavic)</option>
+                    </optgroup>
+                </select>
+                <div id="methodDesc" class="method-description"></div>
+            </div>
+            
+            <div class="control-group">
+                <label for="function">Target Function</label>
+                <select id="function">
+                    <option value="0">f(x) = x² - 4</option>
+                    <option value="1">f(x) = x³ - 2x - 5</option>
+                  <!--  <option value="2">f(x) = sin(x) - 0.5</option> -->
+                    <option value="3">f(x) = e^x - 3</option>
+                    <option value="4">f(x) = cos(x) - x</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="x0">Start (x₀)</label>
+                <input type="number" id="x0" value="0" step="0.1">
+            </div>
+            
+            <div class="control-group">
+                <label for="x1">End (x₁)</label>
+                <input type="number" id="x1" value="3" step="0.1">
+            </div>
+            
+            <div class="control-group">
+                <label for="tolerance">Tolerance (ε)</label>
+                <input type="number" id="tolerance" value="0.001" step="0.0001">
+            </div>
+            
+            <div class="control-group" id="dampingGroup" style="display: none;">
+                <label for="damping">Damping Factor</label>
+                <input type="number" id="damping" value="0.5" step="0.1" min="0" max="0.99">
+            </div>
+            
+            <div class="control-group" id="maxiterGroup">
+                <label for="maxiter">Max Iterations</label>
+                <input type="number" id="maxiter" value="100" step="10" min="10">
+            </div>
+            
+            <div class="control-group">
+                <label for="speed">Animation Speed</label>
+                <input type="range" id="speed" min="50" max="2000" value="300" step="50">
+                <span id="speedValue" style="text-align: center; color: #666;">300ms</span>
+            </div>
+            
+            <button id="runBtn"> Run Algorithm</button>
+            <button id="resetBtn"> Reset</button>
+        </div>
+        
+        <div class="chart-container">
+            <canvas id="chart"></canvas>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-box">
+                <div class="stat-value" id="iterations">0</div>
+                <div class="stat-label">Iterations</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value" id="currentX">-</div>
+                <div class="stat-label">Current x</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value" id="currentY">-</div>
+                <div class="stat-label">Current f(x)</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value" id="result">-</div>
+                <div class="stat-label">Final Result</div>
+            </div>
+        </div>
+
+        <div class="stats" id="variableStats" style="display: none; margin-top: 10px; background: #f0f7ff; border: 2px solid #667eea; padding: 15px; border-radius: 10px;">
+            <div class="stat-box" style="background: white;">
+                <div class="stat-value" id="varA" style="font-size: 18px;">-</div>
+                <div class="stat-label">a (left bracket)</div>
+            </div>
+            <div class="stat-box" style="background: white;">
+                <div class="stat-value" id="varB" style="font-size: 18px;">-</div>
+                <div class="stat-label">b (right bracket)</div>
+            </div>
+            <div class="stat-box" style="background: white;">
+                <div class="stat-value" id="varC" style="font-size: 18px;">-</div>
+                <div class="stat-label">c (interpolation)</div>
+            </div>
+            <div class="stat-box" style="background: white;">
+                <div class="stat-value" id="varD" style="font-size: 18px;">-</div>
+                <div class="stat-label">d (extra point)</div>
+            </div>
+        </div>
+        
+        <div class="info">
+            <strong>About this:</strong> This is made in WebAssembly, as I did not want to modify my C++ implementations. I hope to soon add an option to input any function, not just predefined ones.
+        </div>
+    </div>
+
+    <script>
+        const methodDescriptions = {
+            bisection: "Classic bisection method. Requires bracketed root. Guaranteed convergence but slower than others.",
+            newtonSimple: "Simple Newton's method with numerical derivative. Fast convergence but may diverge without good initial guess.",
+            secant: "Secant method - similar to Newton but doesn't require derivative. Uses two points to estimate slope.",
+            newtonRaphsonSolve: "Advanced Newton-Raphson with adaptive damping. Handles difficult cases by reducing step size when diverging.",
+            riddersSolve: "Ridders' method is exponentially convergent, very robust for well-behaved functions.",
+            regulaFalsiUnmodified: "Basic Regula Falsi (False Position). Linear interpolation between bracket points.",
+            regulaFalsiIllinois: "Illinois modification prevents stalling on one side of the root.",
+            regulaFalsiSlavic: "Slavic modification uses transformation f/(1+|f|) for better convergence.",
+            regulaFalsiIllinoisSlavic: "Combines both Illinois and Slavic modifications for optimal performance."
+        };
+
+        const functions = {
+            0: x => x * x - 4,
+            1: x => x * x * x - 2 * x - 5,
+            2: x => Math.sin(x) - 0.5,
+            3: x => Math.exp(x) - 3,
+            4: x => Math.cos(x) - x
+        };
+
+        const functionNames = {
+            0: 'f(x) = x² - 4',
+            1: 'f(x) = x³ - 2x - 5',
+            2: 'f(x) = sin(x) - 0.5',
+            3: 'f(x) = e^x - 3',
+            4: 'f(x) = cos(x) - x'
+        };
+
+        const methodNames = {
+            bisection: 'Bisection Method',
+            newtonSimple: 'Newton\'s Method (Simple)',
+            secant: 'Secant Method',
+            newtonRaphsonSolve: 'Newton-Raphson (Damped)',
+            riddersSolve: 'Ridders\' Method',
+            regulaFalsiUnmodified: 'Regula Falsi (Unmodified)',
+            regulaFalsiIllinois: 'Regula Falsi (Illinois)',
+            regulaFalsiSlavic: 'Regula Falsi (Slavic)',
+            regulaFalsiIllinoisSlavic: 'Regula Falsi (Illinois-Slavic)'
+        };
+
+        const ctx = document.getElementById('chart').getContext('2d');
+        let chart = new Chart(ctx, {
+            type: 'scatter',
+            data: {
+                datasets: [
+                    {
+                        label: 'Function Curve',
+                        data: [],
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        showLine: true,
+                        pointRadius: 0,
+                        borderWidth: 2
+                    },
+                    {
+                        label: 'Algorithm Evaluations',
+                        data: [],
+                        borderColor: '#ff6b6b',
+                        backgroundColor: '#ff6b6b',
+                        pointRadius: 6,
+                        showLine: false
+                    },
+                    {
+                        label: 'Current Point',
+                        data: [],
+                        borderColor: '#51cf66',
+                        backgroundColor: '#51cf66',
+                        pointRadius: 10,
+                        showLine: false
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 0 },
+                scales: {
+                    x: {
+                        type: 'linear',
+                        position: 'bottom',
+                        title: { 
+                            display: true, 
+                            text: 'x', 
+                            font: { size: 16, weight: 'bold' },
+                            color: '#333'
+                        },
+                        ticks: {
+                            font: { size: 12 },
+                            color: '#666'
+                        },
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.1)',
+                            drawBorder: true,
+                            borderWidth: 2,
+                            borderColor: '#333'
+                        }
+                    },
+                    y: {
+                        type: 'linear',
+                        position: 'left',
+                        title: { 
+                            display: true, 
+                            text: 'f(x)', 
+                            font: { size: 16, weight: 'bold' },
+                            color: '#333'
+                        },
+                        ticks: {
+                            font: { size: 12 },
+                            color: '#666'
+                        },
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.1)',
+                            drawBorder: true,
+                            borderWidth: 2,
+                            borderColor: '#333'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: { 
+                        display: true, 
+                        position: 'top',
+                        labels: {
+                            font: { size: 13 },
+                            padding: 15,
+                            usePointStyle: true
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'Root Finding Visualization',
+                        font: { size: 16, weight: 'bold' },
+                        padding: 20,
+                        color: '#333'
+                    },
+                    tooltip: {
+                        enabled: true,
+                        callbacks: {
+                            label: function(context) {
+                                const datasetLabel = context.dataset.label || '';
+                                const x = context.parsed.x.toFixed(4);
+                                const y = context.parsed.y.toFixed(4);
+                                
+                                // Check if this point has a label
+                                const labelInfo = pointLabels.find(p => 
+                                    Math.abs(p.x - context.parsed.x) < 0.0001 && 
+                                    Math.abs(p.y - context.parsed.y) < 0.0001
+                                );
+                                
+                                if (labelInfo && labelInfo.label) {
+                                    return `${labelInfo.label}: (${x}, ${y})`;
+                                }
+                                
+                                return `${datasetLabel}: (${x}, ${y})`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        let pointQueue = [];
+        let isRunning = false;
+        let iteration = 0;
+        let pointLabels = [];
+        let currentVariables = {a: null, b: null, c: null, d: null};
+        const speedSlider = document.getElementById('speed');
+        const speedValue = document.getElementById('speedValue');
+        const methodSelect = document.getElementById('method');
+        const dampingGroup = document.getElementById('dampingGroup');
+        const methodDesc = document.getElementById('methodDesc');
+        const variableStats = document.getElementById('variableStats');
+
+        speedSlider.addEventListener('input', (e) => {
+            speedValue.textContent = `${e.target.value}ms`;
+        });
+
+        methodSelect.addEventListener('change', (e) => {
+            const method = e.target.value;
+            dampingGroup.style.display = (method === 'newtonRaphsonSolve') ? 'flex' : 'none';
+            
+            // Show variable stats for bracketing methods
+            const bracketingMethods = ['regulaFalsiUnmodified', 'regulaFalsiIllinois', 
+                                       'regulaFalsiSlavic', 'regulaFalsiIllinoisSlavic', 'riddersSolve'];
+            variableStats.style.display = bracketingMethods.includes(method) ? 'grid' : 'none';
+            
+            if (methodDescriptions[method]) {
+                methodDesc.textContent = methodDescriptions[method];
+                methodDesc.classList.add('active');
+            } else {
+                methodDesc.classList.remove('active');
+            }
+        });
+
+        window.logPoint = function(x, y, label) {
+            pointQueue.push({x, y, label: label || ''});
+        };
+
+        function plotFunction(funcId, x0, x1) {
+            const f = functions[funcId];
+            const points = [];
+            const steps = 200;
+            const padding = 1;
+            for (let i = 0; i <= steps; i++) {
+                const x = (x0 - padding) + (i / steps) * ((x1 + padding) - (x0 - padding));
+                points.push({x: x, y: f(x)});
+            }
+            chart.data.datasets[0].data = points;
+            chart.data.datasets[0].label = functionNames[funcId];
+            chart.update();
+        }
+
+        async function animatePoints(delay) {
+            iteration = 0;
+            const allPoints = [];
+            pointLabels = [];
+            currentVariables = {a: null, b: null, c: null, d: null};
+            
+            while (pointQueue.length > 0 || isRunning) {
+                if (pointQueue.length > 0) {
+                    const point = pointQueue.shift();
+                    allPoints.push(point);
+                    
+                    if (point.label) {
+                        pointLabels.push({
+                            x: point.x,
+                            y: point.y,
+                            label: point.label,
+                            iteration: iteration
+                        });
+                        
+                        const varMatch = point.label.match(/^([abcdx])/i);
+                        if (varMatch) {
+                            const varName = varMatch[1].toLowerCase();
+                            if (currentVariables.hasOwnProperty(varName)) {
+                                currentVariables[varName] = point.x;
+                            }
+                        }
+                        
+                        document.getElementById('varA').textContent = currentVariables.a !== null ? currentVariables.a.toFixed(6) : '-';
+                        document.getElementById('varB').textContent = currentVariables.b !== null ? currentVariables.b.toFixed(6) : '-';
+                        document.getElementById('varC').textContent = currentVariables.c !== null ? currentVariables.c.toFixed(6) : '-';
+                        document.getElementById('varD').textContent = currentVariables.d !== null ? currentVariables.d.toFixed(6) : '-';
+                    }
+                    
+                    iteration++;
+                    
+                    chart.data.datasets[1].data = allPoints;
+                    chart.data.datasets[2].data = [point];
+                    
+                    
+                    if (point.label) {
+                       
+                        chart.options.plugins.annotation = {
+                            annotations: {
+                                label1: {
+                                    type: 'label',
+                                    xValue: point.x,
+                                    yValue: point.y,
+                                    content: [point.label],
+                                    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                                    borderColor: '#51cf66',
+                                    borderWidth: 2,
+                                    borderRadius: 4,
+                                    font: {
+                                        size: 14,
+                                        weight: 'bold'
+                                    },
+                                    padding: 6,
+                                    position: 'end'
+                                }
+                            }
+                        };
+                    }
+                    
+                    chart.update();
+                    
+                    document.getElementById('iterations').textContent = iteration;
+                    document.getElementById('currentX').textContent = point.x.toFixed(6);
+                    document.getElementById('currentY').textContent = point.y.toFixed(6);
+                    
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                } else {
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
+            }
+        }
+
+        async function runAlgorithm() {
+            if (isRunning) return;
+            
+            isRunning = true;
+            const runBtn = document.getElementById('runBtn');
+            runBtn.disabled = true;
+            runBtn.textContent = '⏸ Running C++...';
+            
+            const method = document.getElementById('method').value;
+            const funcId = parseInt(document.getElementById('function').value);
+            const x0 = parseFloat(document.getElementById('x0').value);
+            const x1 = parseFloat(document.getElementById('x1').value);
+            const tol = parseFloat(document.getElementById('tolerance').value);
+            const damping = parseFloat(document.getElementById('damping').value);
+            const maxiter = parseInt(document.getElementById('maxiter').value);
+            const delay = parseInt(speedSlider.value);
+            
+            pointQueue = [];
+            iteration = 0;
+            chart.data.datasets[1].data = [];
+            chart.data.datasets[2].data = [];
+            chart.update();
+            
+            plotFunction(funcId, x0, x1);
+            
+            chart.options.plugins.title.text = `${methodNames[method]} → ${functionNames[funcId]}`;
+            chart.update();
+            
+            Module.ccall('setFunction', null, ['number'], [funcId]);
+            
+            const animationPromise = animatePoints(delay);
+            
+            setTimeout(() => {
+                let result;
+                try {
+                    console.log(`Running ${method} with params: x0=${x0}, x1=${x1}, tol=${tol}, maxiter=${maxiter}`);
+                    
+                    if (method === 'newtonRaphsonSolve') {
+                        const xMid = (x0 + x1) / 2;
+                        console.log(`Newton-Raphson: x0=${xMid}, damping=${damping}`);
+                        result = Module.ccall('newtonRaphsonSolve', 'number', ['number', 'number', 'number', 'number'], [xMid, tol, damping, maxiter]);
+                    } else if (method === 'regulaFalsiUnmodified') {
+                        result = Module.ccall('regulaFalsiUnmodified', 'number', ['number', 'number', 'number', 'number'], [x0, x1, tol, maxiter]);
+                    } else if (method === 'regulaFalsiIllinois') {
+                        result = Module.ccall('regulaFalsiIllinois', 'number', ['number', 'number', 'number', 'number'], [x0, x1, tol, maxiter]);
+                    } else if (method === 'regulaFalsiSlavic') {
+                        result = Module.ccall('regulaFalsiSlavic', 'number', ['number', 'number', 'number', 'number'], [x0, x1, tol, maxiter]);
+                    } else if (method === 'regulaFalsiIllinoisSlavic') {
+                        result = Module.ccall('regulaFalsiIllinoisSlavic', 'number', ['number', 'number', 'number', 'number'], [x0, x1, tol, maxiter]);
+                    } else if (method === 'riddersSolve') {
+                        result = Module.ccall('riddersSolve', 'number', ['number', 'number', 'number', 'number'], [x0, x1, tol, maxiter]);
+                    } else {
+                        result = Module.ccall(method, 'number', ['number', 'number', 'number'], [x0, x1, tol]);
+                    }
+                    
+                    console.log(`Result: ${result}`);
+                    
+                    if (isNaN(result)) {
+                        document.getElementById('result').textContent = 'No root found';
+                        document.getElementById('result').style.color = '#d32f2f';
+                    } else {
+                        document.getElementById('result').textContent = result.toFixed(6);
+                        document.getElementById('result').style.color = '#667eea';
+                    }
+                } catch (e) {
+                    console.error('Error running algorithm:', e);
+                    console.error('Error details:', e.message, e.stack);
+                    document.getElementById('result').textContent = 'Error: ' + (e.message || 'Algorithm failed');
+                    document.getElementById('result').style.color = '#d32f2f';
+                }
+                isRunning = false;
+            }, 100);
+            
+            await animationPromise;
+            
+            runBtn.disabled = false;
+            runBtn.textContent = 'Run C++ Algorithm';
+        }
+
+        document.getElementById('runBtn')?.addEventListener('click', runAlgorithm);
+        
+        document.getElementById('resetBtn')?.addEventListener('click', () => {
+            pointQueue = [];
+            isRunning = false;
+            chart.data.datasets[1].data = [];
+            chart.data.datasets[2].data = [];
+            chart.options.plugins.annotation = {annotations: {}};
+            chart.update();
+            
+            document.getElementById('iterations').textContent = '0';
+            document.getElementById('currentX').textContent = '-';
+            document.getElementById('currentY').textContent = '-';
+            document.getElementById('result').textContent = '-';
+            document.getElementById('varA').textContent = '-';
+            document.getElementById('varB').textContent = '-';
+            document.getElementById('varC').textContent = '-';
+            document.getElementById('varD').textContent = '-';
+        });
+
+        const status = document.getElementById('status');
+        const warning = document.getElementById('warning');
+        const controls = document.getElementById('controls');
+
+        var Module = {
+            onRuntimeInitialized: function() {
+                console.log('WebAssembly module loaded successfully');
+                status.className = 'ready';
+                status.textContent = ' WebAssembly Ready';
+                warning.style.display = 'none';
+                controls.style.display = 'grid';
+                
+                plotFunction(0, -1, 4);
+                methodSelect.dispatchEvent(new Event('change'));
+            }
+        };
+
+        const script = document.createElement('script');
+        script.src = 'root_finder.js';
+        script.onerror = function() {
+            status.className = 'error';
+            status.textContent = ' Failed to load WebAssembly module - See instructions below';
+            console.error('Could not load root_finder.js');
+        };
+        document.body.appendChild(script);
+    </script>
+</body>
+</html>
