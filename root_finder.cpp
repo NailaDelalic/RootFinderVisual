@@ -64,7 +64,6 @@ bool TryBracket(FunType f, double x0, double &a, double &b, double hinit, double
     return false;
 }
 
-// BracketRoot - same as in NA
 template <typename FunType>
 bool BracketRoot(FunType f, double x0, double &a, double &b, double hinit = 1e-5, double hmax = 1e10, double lambda = 1.4) {
     if (hinit <= 0 || hmax <= 0 || lambda <= 0) throw domain_error("Invalid parameters");
@@ -73,7 +72,6 @@ bool BracketRoot(FunType f, double x0, double &a, double &b, double hinit = 1e-5
     return TryBracket(f, x0, a, b, -hinit, hmax, lambda);
 }
 
-// RegulaFalsiSolve -  logging
 template <typename FunType>
 double RegulaFalsiSolve(FunType f, double a, double b, RegulaFalsiMode mode = Slavic, double eps = 1e-10, int maxiter = 100) {
     if (eps <= 0 || maxiter <= 0) throw domain_error("Invalid parameters");
@@ -127,7 +125,6 @@ double RegulaFalsiSolve(FunType f, double a, double b, RegulaFalsiMode mode = Sl
     return c;
 }
 
-// RiddersSolve - with logging
 template <typename FunType>
 double RiddersSolve(FunType f, double a, double b, double eps = 1e-10, int maxiter = 100){
     if (eps <= 0 || maxiter <= 0) throw domain_error("Invalid parameters");
@@ -180,7 +177,6 @@ double RiddersSolve(FunType f, double a, double b, double eps = 1e-10, int maxit
     return (a+b)/2;
 }
 
-// NewtonRaphsonSolve - with logging
 template <typename FunType1, typename FunType2>
 double NewtonRaphsonSolve(FunType1 f, FunType2 fprim, double x0, double eps = 1e-10, double damping = 0, int maxiter = 100) {
     if (eps <= 0 || maxiter <= 0 || damping < 0 || damping >= 1) throw domain_error("Invalid parameters");
@@ -221,7 +217,7 @@ double NewtonRaphsonSolve(FunType1 f, FunType2 fprim, double x0, double eps = 1e
     return x;
 }
 
-// ============ EXPORTED WRAPPERS FOR WEBASSEMBLY ============
+// EXPORTED WRAPPERS FOR WEBASSEMBLY 
 extern "C" {
     
     void jsLogPoint(double x, double y) {
@@ -316,7 +312,7 @@ extern "C" {
     EMSCRIPTEN_KEEPALIVE
     double newtonRaphsonSolve(double x0, double eps, double damping, int maxiter) {
         try {
-            // Numerical derivative
+            //will modify derivatives, this is just filler
             auto fprim = [](double x) -> double {
                 const double h = 1e-7;
                 return (currentFunction(x + h) - currentFunction(x - h)) / (2.0 * h);
@@ -327,7 +323,7 @@ extern "C" {
         }
     }
 
-    // ============ SIMPLE METHODS (for comparison) ============
+
     
     EMSCRIPTEN_KEEPALIVE
     double bisection(double x0, double x1, double tolerance) {
